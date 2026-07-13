@@ -1,0 +1,55 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      # ---- CORS global: permite que el frontend (React) llame al Gateway ----
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+      # ---- Rutas: a que microservicio va cada camino ----
+      routes:
+        # --- Servicio de Identidad (puerto 8082) ---
+        - id: identidad-auth
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/auth/**
+        - id: identidad-bancos
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/bancos/**
+        - id: identidad-historial
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/historial/**
+
+        # --- Servicio de Juego (puerto 8081) ---
+        - id: juego-salas
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/salas/**
+        # WebSocket / STOMP (el Gateway detecta el upgrade automaticamente)
+        - id: juego-websocket
+          uri: http://localhost:8081
+          predicates:
+            - Path=/ws-juego/**
+
+# ---- JWT: misma clave secreta que usa el Servicio de Identidad ----
+# (debe coincidir EXACTAMENTE con quizarena.jwt.secret de Identidad)
+quizarena:
+  jwt:
+    secret: cambia-esta-clave-secreta-por-una-larga-y-aleatoria-de-al-menos-32-bytes
+  # Rutas publicas que NO requieren token (se validan por prefijo)
+  seguridad:
+    rutas-publicas: /api/auth,/ws-juego
+
+logging:
+  level:
+    com.quizarena.gateway: DEBUG
+    org.springframework.cloud.gateway: INFO
