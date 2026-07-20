@@ -1,55 +1,72 @@
+# ==========================================================
+# QuizArena - API Gateway
+# Configuracion externalizada: ${VARIABLE:valor_por_defecto}
+# ==========================================================
 server:
-  port: 8080
+  port: ${PORT:8080}
 
 spring:
   application:
     name: api-gateway
   cloud:
     gateway:
-      # ---- CORS global: permite que el frontend (React) llame al Gateway ----
       globalcors:
         cors-configurations:
           '[/**]':
-            allowedOriginPatterns: "*"
+            # En Azure: la URL real del frontend (ej. https://quizarena.azurestaticapps.net)
+            allowedOriginPatterns: ${CORS_ORIGENES:*}
             allowedMethods: "*"
             allowedHeaders: "*"
-      # ---- Rutas: a que microservicio va cada camino ----
       routes:
-        # --- Servicio de Identidad (puerto 8082) ---
+        # --- Servicio de Identidad ---
         - id: identidad-auth
-          uri: http://localhost:8082
+          uri: ${SERVICIO_IDENTIDAD_URL:http://localhost:8082}
           predicates:
             - Path=/api/auth/**
         - id: identidad-bancos
-          uri: http://localhost:8082
+          uri: ${SERVICIO_IDENTIDAD_URL:http://localhost:8082}
           predicates:
             - Path=/api/bancos/**
         - id: identidad-historial
-          uri: http://localhost:8082
+          uri: ${SERVICIO_IDENTIDAD_URL:http://localhost:8082}
           predicates:
             - Path=/api/historial/**
+        - id: identidad-amigos
+          uri: ${SERVICIO_IDENTIDAD_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/amigos/**
 
-        # --- Servicio de Juego (puerto 8081) ---
+        # --- Servicio de Juego ---
         - id: juego-salas
-          uri: http://localhost:8081
+          uri: ${SERVICIO_JUEGO_URL:http://localhost:8081}
           predicates:
             - Path=/api/salas/**
-        # WebSocket / STOMP (el Gateway detecta el upgrade automaticamente)
         - id: juego-websocket
-          uri: http://localhost:8081
+          uri: ${SERVICIO_JUEGO_URL:http://localhost:8081}
           predicates:
             - Path=/ws-juego/**
 
-# ---- JWT: misma clave secreta que usa el Servicio de Identidad ----
-# (debe coincidir EXACTAMENTE con quizarena.jwt.secret de Identidad)
+        # --- Servicio de IA (bono) ---
+        - id: ia-preguntas
+          uri: ${SERVICIO_IA_URL:http://localhost:8083}
+          predicates:
+            - Path=/api/ia/**
+
+# ---- JWT: la MISMA clave que el Servicio de Identidad ----
+# Sin valor por defecto a proposito: si falta la variable de entorno, la app
+# debe fallar al arrancar en vez de validar tokens con una clave publica.
 quizarena:
   jwt:
-    secret: cambia-esta-clave-secreta-por-una-larga-y-aleatoria-de-al-menos-32-bytes
-  # Rutas publicas que NO requieren token (se validan por prefijo)
+    secret: ${JWT_SECRET}
   seguridad:
-    rutas-publicas: /api/auth,/ws-juego
+    rutas-publicas: /api/auth,/ws-juego,/api/bancos/oficiales
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
 
 logging:
   level:
-    com.quizarena.gateway: DEBUG
-    org.springframework.cloud.gateway: INFO
+    com.quizarena.gateway: INFO

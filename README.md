@@ -1,68 +1,81 @@
-# QuizArena - API Gateway (Fase 3)
+# QuizArena · API Gateway
 
-Punto de entrada unico al sistema. Enruta las peticiones a los microservicios
-y valida el JWT en la entrada. Corre en el puerto 8080.
+Punto de entrada único al sistema. Enruta las peticiones REST a los
+microservicios y valida el JWT en la entrada. Corre en el puerto 8080.
 
-## Que hace
+## Qué hace
 
-- Recibe TODO el trafico del frontend en el puerto 8080.
+- Recibe TODO el tráfico REST del frontend en el puerto 8080.
 - Enruta cada camino al microservicio correcto:
-    /api/auth/**       -> Servicio de Identidad (8082)
-    /api/bancos/**     -> Servicio de Identidad (8082)
-    /api/historial/**  -> Servicio de Identidad (8082)
-    /api/salas/**      -> Servicio de Juego (8081)
-    /ws-juego/**       -> Servicio de Juego (8081)  [WebSocket]
-- Valida el JWT antes de enrutar (rutas publicas: /api/auth y /ws-juego).
+  ```
+  /api/auth/**       -> Servicio de Identidad
+  /api/bancos/**     -> Servicio de Identidad
+  /api/historial/**  -> Servicio de Identidad
+  /api/amigos/**     -> Servicio de Identidad
+  /api/salas/**      -> Servicio de Juego
+  /ws-juego/**       -> Servicio de Juego  (WebSocket)
+  /api/ia/**         -> Servicio de IA
+  ```
+- Valida el JWT antes de enrutar. Rutas públicas (sin token):
+  `/api/auth/**`, `/ws-juego/**`, `/api/bancos/oficiales`.
+- CORS centralizado aquí: ningún otro servicio debe tener `@CrossOrigin`
+  (rompe con cabeceras duplicadas si lo hace).
 
 ## Requisitos
 
-- Los tres servicios deben estar corriendo:
-    - Api Gateway       : 8080  (este)
-    - Servicio de Juego : 8081
-    - Servicio de Identidad : 8082
-- La clave JWT del Gateway (application.yml) debe ser IGUAL a la de Identidad.
+- Los otros microservicios corriendo (o accesibles por red):
+  - Servicio de Identidad — `SERVICIO_IDENTIDAD_URL` (por defecto `localhost:8082`)
+  - Servicio de Juego — `SERVICIO_JUEGO_URL` (por defecto `localhost:8081`)
+  - Servicio de IA — `SERVICIO_IA_URL` (por defecto `localhost:8083`)
+- `JWT_SECRET` **debe ser idéntica** a la de Identidad y el Servicio de
+  Juego. No tiene valor por defecto: si falta, el Gateway no arranca (evita
+  validar tokens con una clave pública conocida del repositorio).
 
-## Como arrancarlo
+## Cómo arrancarlo
 
-Desde IntelliJ ejecuta ApiGatewayApplication, o:
+Desde IntelliJ ejecuta `ApiGatewayApplication`, o:
 
-    mvn spring-boot:run
+```bash
+mvn spring-boot:run
+```
 
-## Como probarlo
+## Cómo probarlo
 
-La idea: ahora puedes hacer TODAS las llamadas al puerto 8080 (el Gateway) en
-vez de a los puertos internos, y el Gateway las reenvia.
+Todas las llamadas van al puerto 8080 (el Gateway), no a los puertos
+internos de cada servicio.
 
-### 1. Registro / login (ruta publica, sin token) - via Gateway (8080)
+### 1. Login (ruta pública, sin token)
 
-    $r = Invoke-RestMethod -Uri http://localhost:8080/api/auth/login -Method Post -ContentType "application/json" -Body '{"correo":"juan@mail.com","contrasena":"secreta123"}'
-    $token = $r.token
+```powershell
+$r = Invoke-RestMethod -Uri http://localhost:8080/api/auth/login -Method Post -ContentType "application/json" -Body '{"correo":"juan@mail.com","contrasena":"secreta123!"}'
+$token = $r.token
+```
 
-Si esto funciona, el Gateway esta enrutando bien a Identidad.
+### 2. Ruta protegida sin token → debe dar 401
 
-### 2. Ruta protegida SIN token -> debe dar 401
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8080/api/bancos/mios"
+```
 
-    Invoke-RestMethod -Uri "http://localhost:8080/api/bancos?materia=Arquitectura"
+### 3. Ruta protegida con token → debe funcionar
 
-Debe rechazar con 401 (el Gateway bloquea porque falta el token).
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8080/api/bancos/mios" -Headers @{Authorization="Bearer $token"}
+```
 
-### 3. Ruta protegida CON token -> debe funcionar
-
-    Invoke-RestMethod -Uri "http://localhost:8080/api/bancos?materia=Arquitectura" -Headers @{Authorization="Bearer $token"}
-
-Debe devolver los bancos (el Gateway valido el token y enruto a Identidad).
-
-Si los 3 casos se comportan asi, el Gateway funciona: enruta y protege.
+Si los 3 casos se comportan así, el Gateway enruta y protege correctamente.
 
 ## Nota sobre el WebSocket
 
-El Gateway puede enrutar el WebSocket (/ws-juego). Si al conectar el frontend
-por el Gateway hay problemas con SockJS, la alternativa valida es conectar el
-WebSocket directo al Servicio de Juego (8081) y dejar solo el REST por el
-Gateway; es una decision comun para el trafico en tiempo real.
+El WebSocket del juego (`/ws-juego`) se conecta **directo** al Servicio de
+Juego (puerto 8081), no a través del Gateway. Decisión consciente: evita la
+complejidad de enrutar SockJS por un proxy y reduce latencia en el tiempo
+real. Solo el REST pasa por el Gateway.
 
-## Nota sobre la validacion doble
+## Nota sobre la validación doble de JWT
 
-Por ahora el JWT se valida en el Gateway Y en Identidad (defensa en profundidad).
-En una evolucion se puede centralizar solo en el Gateway y que los servicios
-internos confien en el.
+El JWT se valida en el Gateway **y** en Identidad/Juego (defensa en
+profundidad). El Servicio de Juego lo valida de forma permisiva (nunca
+rechaza la petición, solo identifica al usuario si el token es válido),
+porque necesita saber quién crea una sala sin exigir sesión para jugar
+como invitado.
